@@ -93,7 +93,8 @@ class VacancyScraper:
                 name = self.get_txt_of_element(vac, {"class": "resume-search-item__name"})
                 salary = self.get_txt_of_element(vac, {"data-qa": "vacancy-serp__vacancy-compensation"})
                 company = self.get_txt_of_element(vac, {"data-qa": "vacancy-serp__vacancy-employer"})
-                city = self.get_txt_of_element(vac, {"data-qa": "vacancy-serp__vacancy-address"})
+                city = re.split(r'[\s|,]+',
+                                self.get_txt_of_element(vac, {"data-qa": "vacancy-serp__vacancy-address"}))[0]
                 link = get_element(vac, {"data-qa": "vacancy-serp__vacancy-title"})['href']
 
                 min_salary = self.get_salary_info(r'\d+[\\.|\s]\d+', salary, 0)
@@ -110,7 +111,8 @@ class VacancyScraper:
                               'site': self.url}
                 self.results.append(added_dict)
 
-            pprint(self.results)
+        self.save_results()
+        self.print_vacancies()
 
 
 if __name__ == "__main__":
