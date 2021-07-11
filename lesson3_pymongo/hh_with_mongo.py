@@ -6,14 +6,24 @@
 
 import json
 import re
+from pathlib import Path
 from pprint import pprint
 
 import requests
 from bs4 import BeautifulSoup
+from pymongo import MongoClient
 
 headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
 }
+
+cred_path = Path(__file__).cwd().parent / 'cred.json'
+
+
+def get_client():
+    with open(cred_path, "r") as cred:
+        x = json.load(cred)['lesson3']
+        return MongoClient(x['HOST'], x['PORT'])
 
 
 def get_dom(html_string):
@@ -34,8 +44,8 @@ class VacancyScraper:
             "st": "searchVacancy",
             "text": vacancy
         }
-        self.results = []
-        self.FILE = "vacancies.json"
+        self.client = get_client()
+        self.collection = self.client['vacancies'].hh_vacancies
 
     def get_start_request(self):
         return get_dom(requests.get(self.url, params=self.params, headers=headers).text)
@@ -52,6 +62,16 @@ class VacancyScraper:
             return self.count_of_pages
         raise ValueError("Вы запрашиваете информацию со слишком большого количества страниц")
 
+    def get_vacancies_with_salary_greater(self, salary):
+        print(f'Вакансии с зп более {salary}:')
+        for i in self.collection.find({'min_salary': {'$gt': salary}}):
+            print(i)
+
+    def get_vacancies_with_salary_none(self):
+        print(f'Вакансии без указания зп:')
+        for i in self.collection.find({'min_salary': None}):
+            print(i)
+
     @staticmethod
     def get_txt_of_element(html, attrs):
         try:
@@ -66,14 +86,24 @@ class VacancyScraper:
         except (TypeError, IndexError):
             return None
 
-    def save_results(self):
-        with open(self.FILE, 'w') as repos:
-            json.dump(self.results, repos)
+    @staticmethod
+    def return_salary(salary):
+        if salary is not None:
+            return int(salary)
+        else:
+            return None
+
+    def save_results(self, vacancy_json):
+        el = vacancy_json.get('link')
+        if len(list(self.collection.find({'link': el}))) < 1:
+            self.collection.insert_one(vacancy_json)
 
     def print_vacancies(self):
-        with open(self.FILE, 'r') as vacancies:
-            vacancy_info = json.load(vacancies)
-            pprint(vacancy_info)
+        for i in self.collection.find():
+            pprint(i)
+
+    def close(self):
+        self.client.close()
 
     def pipeline(self):
         self.check_count_of_pages()
@@ -83,16 +113,15 @@ class VacancyScraper:
             items = self.get_request(page).findAll(
                 attrs={"class": "vacancy-serp-item"}
             )
-            for vac in items:
-                name = self.get_txt_of_element(vac, {"class": "resume-search-item__name"})
-                salary = self.get_txt_of_element(vac, {"data-qa": "vacancy-serp__vacancy-compensation"})
-                company = self.get_txt_of_element(vac, {"data-qa": "vacancy-serp__vacancy-employer"})
+            for vacancy in items:
+                name = self.get_txt_of_element(vacancy, {"class": "resume-search-item__name"})
+                salary = self.get_txt_of_element(vacancy, {"data-qa": "vacancy-serp__vacancy-compensation"})
+                company = self.get_txt_of_element(vacancy, {"data-qa": "vacancy-serp__vacancy-employer"})
                 city = re.split(r'[\s|,]+',
-                                self.get_txt_of_element(vac, {"data-qa": "vacancy-serp__vacancy-address"}))[0]
-                link = get_element(vac, {"data-qa": "vacancy-serp__vacancy-title"})['href']
-
-                min_salary = self.get_salary_info(r'\d+[\\.|\s]\d+', salary, 0)
-                max_salary = self.get_salary_info(r'\d+[\\.|\s]\d+', salary, 1)
+                                self.get_txt_of_element(vacancy, {"data-qa": "vacancy-serp__vacancy-address"}))[0]
+                link = get_element(vacancy, {"data-qa": "vacancy-serp__vacancy-title"})['href']
+                min_salary = self.return_salary(self.get_salary_info(r'\d+[\\.|\s]\d+', salary, 0))
+                max_salary = self.return_salary(self.get_salary_info(r'\d+[\\.|\s]\d+', salary, 1))
                 currency = self.get_salary_info(r'[a-zA-Zа-яА-ЯёЁ]+(?=[\\.|\s]*$)', salary, 0)
 
                 added_dict = {'vacancy': name,
@@ -103,13 +132,16 @@ class VacancyScraper:
                               'city': city,
                               'link': link,
                               'site': self.url}
-                self.results.append(added_dict)
+                self.save_results(added_dict)
 
-        self.save_results()
         self.print_vacancies()
 
 
 if __name__ == "__main__":
-    vacancy = input(f'Введите искомую вакансию, узнайте наличие: \n')
-    count_of_pages = int(input(f'Введите количество страниц с сайта: \n'))
-    VacancyScraper(vacancy, count_of_pages).pipeline()
+    vac = input(f'Введите искомую вакансию, узнайте наличие: \n')
+    count = int(input(f'Введите количество страниц с сайта: \n'))
+    vacancy_scraper = VacancyScraper(vac, count)
+    vacancy_scraper.pipeline()
+    vacancy_scraper.get_vacancies_with_salary_greater(int(input(f'Введите минимальную зп, узнайте наличие: \n')))
+    vacancy_scraper.get_vacancies_with_salary_none()
+    vacancy_scraper.close()
