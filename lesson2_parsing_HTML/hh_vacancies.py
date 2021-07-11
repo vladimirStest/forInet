@@ -30,8 +30,7 @@ def get_element(html, attrs):
 
 
 class VacancyScraper:
-    def __init__(self, vacancy=input(f'Введите искомую вакансию, узнайте наличие: \n'),
-                 count_of_pages=int(input(f'Введите количество страниц с сайта: \n'))):
+    def __init__(self, vacancy, count_of_pages):
         self.count_of_pages = count_of_pages
         self.url = 'https://hh.ru/search/vacancy'
         self.params = {
@@ -116,4 +115,6 @@ class VacancyScraper:
 
 
 if __name__ == "__main__":
-    VacancyScraper().pipeline()
+    vacancy = input(f'Введите искомую вакансию, узнайте наличие: \n')
+    count_of_pages = int(input(f'Введите количество страниц с сайта: \n'))
+    VacancyScraper(vacancy, count_of_pages).pipeline()
